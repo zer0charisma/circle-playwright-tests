@@ -1,14 +1,76 @@
+# Circle.so Playwright Tests
+
+End-to-end tests for the [Circle.so](https://circle.so) web app, written in Playwright and TypeScript.
+
+The suite has two versions of the same tests: a reliable version built with page objects and good practices, and a deliberately naive version that shows common mistakes. Comparing them side by side shows what makes automated tests trustworthy, and why some tests pass today and fail tomorrow.
+
+> Personal project. Not affiliated with Circle.
+
+## What's tested
+
+| Area | Spec file |
+|---|---|
+| Home page | `tests/home.spec.ts` |
+| Login | `tests/login.spec.ts` |
+| Signup | `tests/signup.spec.ts` |
+| Naive versions (for comparison) | `tests/bad-example.spec.ts` |
+
+Every test runs in **Chromium, Firefox, and WebKit** to catch browser-specific bugs.
+
+## Project structure
+
+```
+pages/            Page objects: locators and actions for each page
+  base.page.ts    Shared helpers used by all pages
+  home.page.ts
+  login.page.ts
+  signup.page.ts
+tests/            Test specs
+playwright.config.ts
+```
+
+Page objects keep locators in one place, so when the UI changes, the fix happens in one file instead of every test.
+
 ## Good vs. naive tests
 
-`tests/bad-example.spec.ts` walks through signup with common anti-patterns built in. Each one is a real mistake that makes tests flaky, misleading, or hard to maintain.
+| | Good tests | Naive tests (`bad-example.spec.ts`) |
+|---|---|---|
+| **Waiting** | Rely on Playwright's auto-waiting and web-first assertions | Hard-coded sleeps (`waitForTimeout`) |
+| **Locators** | Role-, label-, or test-ID-based locators in page objects | Brittle CSS/XPath selectors repeated inline |
+| **Assertions** | Check what the user actually sees | Weak or missing assertions |
+| **Independence** | Each test sets up its own state | Tests depend on each other's order |
 
-| Problem | Naive version | Why it hurts | Good version |
-|---|---|---|---|
-| **Shared state** | One page and one mutable `email` shared across the file; each test continues where the last one stopped | One failure cascades into the rest, and no test can run on its own | Each test gets its own fresh `page` fixture and sets up its own state |
-| **Hidden order dependency** | Relies on running in order, but the config sets `fullyParallel: true` and the file isn't marked `test.describe.serial` | Tests can land on different workers and start on the wrong page | Tests are independent, so parallel runs are safe |
-| **Hard-coded sleeps** | `waitForTimeout()` after nearly every step (up to 5s) | Slow when the app is fast, flaky when it's slow | Playwright auto-waiting and web-first assertions (`await expect(locator).toBeVisible()`) |
-| **Brittle selectors** | `form button`, `button.btn-primary`, the first `input[type="checkbox"]`, comma "fallback" selectors | Break on small UI changes, or silently match the wrong element | Role- and label-based locators, kept in page objects |
-| **Weak assertions** | `expect(await page.$('h1')).toBeTruthy()` passes if *any* heading exists; one test has no assertion at all | Tests pass while the feature is broken | Assertions check the specific thing the user should see |
-| **No auto-retry on checks** | Uses `page.$()` snapshots | Checks once and moves on, so timing decides pass or fail | Locator assertions retry until they pass or time out |
-| **Hard-coded URL** | Full `https://app.circle.so/...` in the test | Can't point the suite at another environment | Relative paths resolved against `baseURL` from `.env` |
-| **Bypasses the fixture** | Opens its own page with `browser.newPage()` | Loses the config's per-test settings, so failure screenshots, video, and traces may not be captured | Uses the built-in `page` fixture |
+## Config choices
+
+A few settings in `playwright.config.ts` are deliberate:
+
+- **No retries locally, 2 in CI.** Flaky tests show up while developing instead of being hidden, and CI tolerates shared-runner noise.
+- **Short assertion timeout (5s) inside a 30s test timeout.** A missing element fails fast instead of eating the whole test budget.
+- **Traces, screenshots, and videos kept only on failure.** Full debugging detail when something breaks, with no cost on passing runs.
+- **`test.only` fails the build in CI.** A leftover `.only` can't silently shrink coverage.
+- **Base URL and credentials come from `.env`.** The same suite can target different environments without code changes, and no secrets live in the code.
+
+## Running the tests
+
+**Prerequisites:** Node.js 18+ and a Circle.so test account.
+
+```bash
+npm install
+npx playwright install
+cp .env.example .env    # then fill in your test account details
+npx playwright test
+```
+
+Run only the naive tests:
+
+```bash
+npx playwright test tests/bad-example.spec.ts
+```
+
+View the HTML report after a run:
+
+```bash
+npx playwright show-report
+```
+
+> Use a dedicated test account, not a personal one. These tests run against the live Circle.so site.
